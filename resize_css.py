@@ -1,6 +1,7 @@
 #!/usr/bin/python
 import os
 import fileinput
+import tinycss
 
 filePathGlobal = ''
 lineNumber = 0
@@ -31,12 +32,18 @@ def parseit(filepath):
 		global selector
 		global selectorMade
 		global propertyFinished
-		if selectorMade == False and word.find('{')!= -1:
-			selector = selector + ' ' + word[:word.index('{')]
-			selectorMade = True
-			print 'we have a selector it is: ' + selector 
-			word = word[word.index('{'):]
-		
+		if selectorMade == False
+			selector = selector + ' ' + word
+			if word.find('{')!= -1:
+				selector = selector + ' ' + word[:word.index('{')]
+				selectorMade = True
+				print 'we have a selector it is: ' + selector 
+				word = word[word.index('{'):]
+			else:
+				
+			if word == '' or word == ' ':
+				continue
+	
 		cssProperty = cssProperty  + word
 		if selectorMade == True:
 			if word.find(':') != -1:
