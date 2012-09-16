@@ -20,9 +20,24 @@ currentDeclaration = ''
 currentValue = None
 mediaQuery = '@media (min-height: 395px) and (max-height: 719px) {\n'
 closeMediaQuery = '}'
-appendSection = ''
-
+targetDir = '/scss'
 parser = tinycss.make_parser('page3')	
+
+
+def scanDir():
+	for dirname, dirnames, filenames in os.walk('.'):
+		for filename in filenames:
+			filepath = os.path.join(dirname, filename)
+			fileName, fileExtension = os.path.splitext(filepath)
+			if fileExtension == '.css':
+				#print '<<'+ dirname + filename
+				parseit(filepath)
+				contents = rewriteRules()
+				if contents:
+					contents = open(filepath, 'r').read() + mediaQuery + contents + closeMediaQuery
+					print contents
+					writeNewFile(dirname + targetDir, fileName + '.scss', contents)
+
 
 def makedir(dirpath):
 	direxists = os.path.isdir(dirpath)
@@ -65,11 +80,9 @@ def parseit(filepath):
 
 def getExtention(filepath):
 	#print os.path.join(dirname, filename)
-	fileName, fileExtension = os.path.splitext(filepath)
 	#print fileExtension[1:]
-	if fileExtension[1:] == 'css':
+	return fileExtension[1:]
 		#print 'found css file '+fileName
-		parseit(filepath)
 
 def multiplyValue(value):
 	global multiplier 
@@ -80,19 +93,15 @@ def multiplyValue(value):
 			tempValue = tempValue[:-2]
 		newValue = tempValue + 'px'
 	else:
-		newValue = value
+		tempValue = value.replace(' ', '')
+		newValue = tempValue
 	return  newValue
 	
 
 scssDir = makedir('scss')
-for dirname, dirnames, filenames in os.walk('.'):
-    for filename in filenames:
-		filepath = os.path.join(dirname, filename)
-		getExtention(filepath)
 
 def rewriteRules():
-	global appendSection
-	appendSection = appendSection + '\n' + mediaQuery
+	appendSection = ''
 	for rules in rulesList:
 		rule = rules
 		#print rule
@@ -109,8 +118,14 @@ def rewriteRules():
 					appendSection += ';\n'
 					#print '$$$$$$$'
 			appendSection += '\t}\n\n'	
-	appendSection += '}'
+	return appendSection
 
-rewriteRules()
+def writeNewFile(directory, name, contents):
+	newFile = open(directory + '/' + name, 'w')
+	newFile.write(contents)
+	newFile.close()
+
+
+scanDir()
 		
 #print '0000000000000\n' + appendSection
