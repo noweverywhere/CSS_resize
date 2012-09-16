@@ -6,4 +6,16 @@ window {
 	margin: 0 20px 30px;
 	max-height: 100%;
 	font-family: sans-serif;
+	-webkit-transform-style: preserve-3d;
+	display: -webkit-boxe
+	-webkit-box-pack: center;	
+}
+
+hr, p{
+	outline: 1px solid red;
+	color: blue;
+}
+
+div, body{
+	color: #444;
 }
