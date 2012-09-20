@@ -8,6 +8,7 @@
 
 import os		# module to find css files
 import fileinput	# module to read files
+import subprocess
 try:
 	import tinycss	# module to parse css
 	tinyCSSLoaded = True
@@ -18,7 +19,7 @@ if tinyCSSLoaded != True:
 	raw_input('Dependency TinyCSS Not Installed \n Press any key to exit')
 
 multiplier = 1.6
-mediaQuery = '@media (min-height: 395px) and (max-height: 719px) {\n'
+mediaQuery = '@media (min-height: 720px) and (max-height: 1079px) {\n'
 closeMediaQuery = '}'
 targetDir = './scss'
 workingDir = '.'
@@ -34,19 +35,24 @@ def scanDir(workingDir = '.'):
 	"""
 	parser = tinycss.make_parser('page3')
 	for dirname, dirnames, filenames in os.walk(workingDir):
-		print 'dirname' + dirname
+		#print 'dirname' + dirname
 		for filename in filenames:
-			if filename.find('sencha-touch.') != -1: continue
 			filepath = os.path.join(dirname, filename)
 			fileName, fileExtension = os.path.splitext(filepath)
 			if fileExtension == '.css':
 				# if we find a file with a .css extentsion
 				#print '<<'+ dirname + filename
-				print 'Working on: ' + filepath
+				
+				if filename.find('sencha-touch.') != -1 or filename.find('jquery') != -1 or dirname.find('sencha') != -1 or dirname.find('Navigation') != -1:
+					#print 'Skip ' + dirname + '/' + filename 
+					continue
+				#print 'Working on: ' + filepath
 				rules = parseit(filepath, parser)
 				contents = rewriteRules(rules)
 				if contents:
-					contents = open(filepath, 'r').read() + '\n' + mediaQuery + contents + closeMediaQuery
+					fileContents = str(open(filepath, 'rb').read())
+					contents = fileContents + '\n\n' + mediaQuery + contents + closeMediaQuery
+					#contents =  mediaQuery + contents + closeMediaQuery
 					#print contents
 					currentDir = fileName
 					currentDir = currentDir[:-currentDir[::-1].index('/')]
@@ -102,6 +108,7 @@ def parseit(filepath, parser):
 				'hasResize': False,
 				'isImportant': declaration.priority
 				}
+			if declaration.name.find('background') != -1: continue
 			for value in declaration.value:
 				valueCSS = value.as_css()
 				if valueCSS != ' ': declarationTuple['valueList'].append(valueCSS)
@@ -127,8 +134,37 @@ def multiplyValue(value):
 	"""
 	global multiplier 
 	newValue = value
-	if value.find('px') != -1:
-		tempValue = int(value.split('px')[0]) * multiplier
+	if value.find('base64') != -1:
+		return value
+	hasPX = value.find('px')
+	if hasPX != -1 and value.find('(') != -1 and value.find(')') != -1:
+		#print value
+		start = value.index('(')
+		propertyName = value[0:start]
+		values = value[start+1:-1]
+		values = values.split(',')
+		tempSubValuesString = ''
+		#print values
+		for subvalue in values:
+			tempSubvalue = subvalue
+			#print 'subvalue is: ' + subvalue
+			if subvalue.find('px') != -1:
+				tempValue = int(subvalue.split('px')[0]) * multiplier
+				tempValue =  str(tempValue)
+				if tempValue[-2:] == '.0':
+					tempValue = tempValue[:-2]
+				tempValue = tempValue + 'px'
+				tempSubvalue = tempValue
+			tempSubValuesString = tempSubValuesString + ' ' + tempSubvalue + ','
+			#print 'tempSubValue' + tempSubvalue
+			#print tempSubValuesString
+		newValue = propertyName + '('+ tempSubValuesString[1:-1].replace('  ', ' ') + ')'
+		#print newValue
+		#raw_input('push any key to continue')
+		#time.sleep(10)
+	elif hasPX != -1:
+		#print value
+		tempValue = float(value.split('px')[0]) * multiplier
 		tempValue =  str(tempValue)
 		if tempValue[-2:] == '.0':
 			tempValue = tempValue[:-2]
@@ -150,12 +186,12 @@ def rewriteRules(rulesList):
 		#print rule
 		#print '>>>'
 		if rule['hasResize'] == True:
-			#print 'passed' + str(rule)
-			appendSection += '\t' + rule['selector'].replace(', ', ',\n\t') + ' {\n'
+			#print 'passed' + /Navigation/resources/css/str(rule)
+			appendSection += '\t' + rule['selector'].replace(', ', ',\n  ') + ' {\n'
 			for declaration in rules['declarationList']:
 				if declaration['hasResize'] == True:
 					#print declaration['valueList']
-					appendSection += '\t\t' + declaration['name'] + ':'
+					appendSection += '    ' + declaration['name'] + ':'
 					for value in declaration['valueList']:   
 						appendSection = appendSection + ' ' + str(multiplyValue(value))
 					if declaration['isImportant'] == 'important':
@@ -164,7 +200,7 @@ def rewriteRules(rulesList):
 						appendSection = appendSection + ';\n'
 						
 					#print '$$$$$$$'
-			appendSection += '\t}\n\n'	
+			appendSection += '  }\n\n'	
 	return appendSection
 
 def writeNewFile(directory, name, contents):
