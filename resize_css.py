@@ -17,6 +17,7 @@ except ImportError:
 
 if tinyCSSLoaded != True:
     raw_input('Dependency TinyCSS Not Installed \n Press any key to exit')
+    os.exit()
 
 multiplier = 1.6
 mediaQuery = '@media (min-height: 720px) and (max-height: 1079px) {\n'
@@ -36,7 +37,7 @@ def scanDir(workingDir = '.'):
     parser = tinycss.make_parser('page3')
     for dirname, dirnames, filenames in os.walk(workingDir):
 	if dirname.find('.git') != -1 or dirname.find('scss') != -1: continue
-        print 'dirname' + dirname
+        #print 'dirname' + dirname
         for filename in filenames:
             filepath = os.path.join(dirname, filename)
             fileName, fileExtension = os.path.splitext(filepath)
@@ -46,9 +47,9 @@ def scanDir(workingDir = '.'):
                 if filename.find('sencha-touch.') != -1 or filename.find('jquery') != -1 or dirname.find('sencha') != -1 or dirname.find('Navigation') != -1:
                     #print 'Skip ' + dirname + '/' + filename 
                     continue
-                print 'Working on: ' + filepath
+                #print 'Working on: ' + filepath
                 rules = parseit(filepath, parser)
-		print 'Just ran parse. Rules found are: ' + str(rules)
+		#print 'Just ran parse. Rules found are: ' + str(rules)
                 contents = rewriteRules(rules)
                 if contents:
                     fileContents = str(open(filepath, 'rb').read())
@@ -181,7 +182,7 @@ def rewriteRules(rulesList):
         String: All the tuples made into a block of CSS
     """
     appendSection = ''
-    print 'rules: ' + str(rulesList)
+    #print 'rules: ' + str(rulesList)
     for rules in rulesList:
         rule = rules
         #print rule
@@ -221,9 +222,9 @@ def writeNewFile(directory, name, contents):
     newFile = open(newFileLocation + '/scss/' + newFileName , 'w')
     newFile.write(contents)
     newFile.close()
-    print 'Wrote new file at: ' + newFileLocation + '/scss/' + newFileName    
+    #print 'Wrote new file at: ' + newFileLocation + '/scss/' + newFileName    
 
 
-print 'Starting resize_css.py'
+#print 'Starting resize_css.py'
 scanDir(workingDir)
-print 'Finished resize_css.py'
+#print 'Finished resize_css.py'
