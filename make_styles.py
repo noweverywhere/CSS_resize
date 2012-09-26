@@ -5,25 +5,33 @@
 
 import json #import module to read json config file
 from pprint import pprint #import pretty print for simple debugging
-from os import path
+import os
 
-def make_styles(working_dir='.'):
+def make_styles(working_dir='.', media_query='@media....'):
+    """ This is the main function for this script
+    """
     print 'making styles'
-    print working_dir 
+    final_block = ''
     json_css_order = open(working_dir + '/order.json')
-    print 
     css_order = json.load(json_css_order)
     pprint(css_order)
     json_css_order.close()
-    contents = create_media_queries(css_order)
-    make_file(working_dir + 'test.txt', contents)
+    final_block, import_block_720 = create_import_blocks(css_order, working_dir)
+    if import_block_720:
+            final_block = final_block + '\n\n' + media_query + import_block_720 + '\n}\n'
+    make_file(working_dir + '/scss/' + 'styles.txt', final_block + '\n')
 
-def create_media_queries(css_order_json, media_query_str):
-    contents = media_query_str
+def create_import_blocks(css_order_json, working_dir):
+    import_block = ''
+    import_block_720 = ''
     for css_file_name in css_order_json['cssfilenames']:
-        if os.path.exists(working_dir + '/720p/' + css_file_name + '.scss'):
-            contents = contents + '\n@import "' + css_file_name + '";'
-    return contents
+        import_block = import_block + '\n@import ' + css_file_name
+        desired_path = working_dir + '/scss/720p/' + css_file_name + '.scss'
+        has_720p_version =  os.path.exists(desired_path)
+        print desired_path + ' exists: ' + str(has_720p_version)
+        if has_720p_version == True:
+            import_block_720 = import_block_720 + '\n\t@import ' + '720p/' +css_file_name + ';\n' 
+    return (import_block, import_block_720)
 
 def make_file(path, contents):
     new_file = open(path, 'w')

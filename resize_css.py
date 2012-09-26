@@ -10,6 +10,7 @@ import os             # module to find css files
 import sys
 import fileinput        # module to read files
 import subprocess
+import make_styles  #import another script I made
 try:
     import tinycss    # module to parse css
     tiny_css_loaded = True
@@ -25,7 +26,24 @@ media_query = '@media (min-height: 720px) and (max-height: 1079px) {\n'
 close_media_query = '}'
 target_dir = './scss'
 working_dir = '.'
+prohibited_dirs = ['.git', 'scss', 'sencha']
+prohibited_file_names = ['sencha-touch', 'jquery']
 
+def is_prohibited(item_name, prohibition_list):
+    """ This function is used to check whether the dir or file name is 
+    prohibited to help us ignore things like the jQuery UI styles etc.
+        Args:
+            item_name: String: name of the dir or file
+            prohibition_list: List of strings
+        Returns:
+            Boolean: True  if item is prohibited
+    """
+    for name in prohibition_list:
+        if item_name.find(name) != -1:
+            return True
+        else:
+            return False
+    
 
 def scan_dir(working_dir = '.'):
     """ This function runs once and start of the whole process
@@ -37,40 +55,45 @@ def scan_dir(working_dir = '.'):
     """
     parser = tinycss.make_parser('page3')
     for dirname, dirnames, filenames in os.walk(working_dir):
-	if dirname.find('.git') != -1 or dirname.find('scss') != -1: continue
-        #print 'dirname' + dirname
-        for full_file_name in filenames:
-            filepath = os.path.join(dirname, full_file_name)
-            file_name, file_extension = os.path.splitext(filepath)
-            if file_extension == '.css':
-                # if we find a file with a .css extentsion
-                #print '<<'+ dirname + filename
-                if full_file_name.find('sencha-touch.') != -1 or full_file_name.find('jquery') != -1 or dirname.find('sencha') != -1 or dirname.find('Navigation') != -1:
-                    print 'Skip ' + dirname + '/' + full_file_name 
-                    continue
-                #print 'Working on: ' + filepath
-                rules = parseit(filepath, parser)
-		        #print 'Just ran parse. Rules found are: ' + str(rules)
-                contents = rewrite_rules(rules)
-                if contents:
+        has_new_scss = False
+        skip = is_prohibited(dirname, prohibited_dirs)
+            #print 'skip'
+        if skip == True: continue
+        else:
+            print 'dirname '+ dirname
+            for full_file_name in filenames:
+                filepath = os.path.join(dirname, full_file_name)
+                file_name, file_extension = os.path.splitext(filepath)
+                if file_extension == '.css':
+                    skip =  is_prohibited(full_file_name, prohibited_file_names)
+                    if skip == True:
+                        print 'Skip ' + dirname + '/' + full_file_name 
+                        continue
+                    rules = parseit(filepath, parser)
+                    contents = rewrite_rules(rules)
                     file_contents = str(open(filepath, 'rb').read())
-                    contents = file_contents + '\n\n' + media_query + contents + close_media_query
-                    #contents =    media_query + contents + close_media_query
-                    #print contents
                     current_dir = file_name
                     current_dir = current_dir[:-current_dir[::-1].index('/')]
-                    scssDir = makedir(current_dir + 'scss')
-                    #print '++++++++++\ntarget_dir :' + target_dir
-                    write_new_file(current_dir, file_name + '.scss', contents)
+                    scssDir = makedir(current_dir + '/scss')
+                    write_new_file(current_dir + 'scss/', file_name + '.scss', file_contents)
+                    if contents:
+                        makedir(current_dir + 'scss/720p/')
+                        new_target_dir = current_dir + '/scss/720p/'
+                        done = write_new_file(new_target_dir, file_name + '.scss', contents)
+                    has_new_scss = True
+                    print '' + str(has_new_scss)
+                    print 'finished with css file'
+            print 'finshed loop ' + str(has_new_scss)
+            if has_new_scss == True:
+                print 'Making new styles.scss'
+                make_styles.make_styles(dirname, media_query)
 
 def makedir(dirpath):
     """ this function checks that the desired dir exits, and if not creates it
     Args:
         dirpath: String: Path of desired dir
     """
-    #print 'making dir at: ' + dirpath
     direxists = os.path.isdir(dirpath)
-    #print "Dir exists: %r" % (direxists) 
     if direxists != True: scssDir = os.mkdir(dirpath) 
 
 def parseit(filepath, parser):
@@ -89,39 +112,35 @@ def parseit(filepath, parser):
         assume that there are no rules that will need to be resized
         we store all the information in a dict that we push to a list
         """
-        #print 'rulez: ' + str(rule)
-        #print dir(rule)
         # Make sure the rule does not have a keyword such as @import or @media
         if rule.at_keyword != None: continue
-        current_rule = {}
-        current_rule['selector'] = rule.selector.as_css()                
-        current_rule['hasResize'] = False        
-        current_rule['declaration_list'] = []
-        #print rule.selector.as_css()
+        current_rule_dict = {}
+        current_rule_dict['selector'] = rule.selector.as_css()                
+        current_rule_dict['hasResize'] = False        
+        current_rule_dict['declaration_list'] = []
+        current_rule_dict['has_image'] = False
         for declaration in rule.declarations:
             """ Iterate over all the declarations in the rule and store their
             values to a list. Record all the declaration properties that
             are relevant to a dict
             """
-            #print declaration
-            declaration_tuple = {
+            declaration_dict = {
                 'name': declaration.name,
                 'valueList': [],
                 'hasResize': False,
                 'isImportant': declaration.priority
                 }
-            if declaration.name.find('background') != -1: continue
             for value in declaration.value:
+                # TODO: SEARCH FOR BACKGROUND-IMAGE AND STORE IT IN 
+                # THE DICT. SO THAT WE CAN REWRITE IT LATER
                 css_value = value.as_css()
-                if css_value != ' ': declaration_tuple['valueList'].append(css_value)
-                #print 'Value: ' + css_value
+                if css_value != ' ': declaration_dict['valueList'].append(css_value)
                 if css_value.find('px') != -1:
-                    current_rule['hasResize'] = True 
-                    declaration_tuple['hasResize'] = True        
-                    #print '_value: ' + value.as_css()
-            current_rule['declaration_list'].append(declaration_tuple)
-        list_of_rules.append(current_rule)
-        current_rule = {}
+                    current_rule_dict['hasResize'] = True 
+                    declaration_dict['hasResize'] = True        
+            current_rule_dict['declaration_list'].append(declaration_dict)
+        list_of_rules.append(current_rule_dict)
+        current_rule_dict = {}
     return list_of_rules
 
 
@@ -136,41 +155,47 @@ def multiply_value(value):
     """
     global multiplier 
     new_value = value
+    # ignore base64 encoded background-images that included 'px'
     if value.find('base64') != -1:
+        #return the value unchanged
         return value
+
+    #here we filter out the properties that actually have 'px' 
+    #this is important for cases like this: 'border: solid red 20px;'
     has_px = value.find('px')
+
     if has_px != -1 and value.find('(') != -1 and value.find(')') != -1:
-        #print value
         start = value.index('(')
         property_name = value[0:start]
         values = value[start+1:-1]
         values = values.split(',')
         temp_sub_value_string = ''
-        #print values
+    
         for subvalue in values:
             temp_sub_value = subvalue
-            #print 'subvalue is: ' + subvalue
+            
             if subvalue.find('px') != -1:
                 temp_value = int(subvalue.split('px')[0]) * multiplier
                 temp_value =    str(temp_value)
+                
                 if temp_value[-2:] == '.0':
                     temp_value = temp_value[:-2]
+                
                 temp_value = temp_value + 'px'
                 temp_sub_value = temp_value
+            
             temp_sub_value_string = temp_sub_value_string + ' ' + temp_sub_value + ','
-            #print 'temp_sub_value' + temp_sub_value
-            #print temp_sub_value_string
+        
         new_value = property_name + '('+ temp_sub_value_string[1:-1].replace('    ', ' ') + ')'
-        #print new_value
-        #raw_input('push any key to continue')
-        #time.sleep(10)
+    
     elif has_px != -1:
-        #print value
         temp_value = float(value.split('px')[0]) * multiplier
         temp_value =    str(temp_value)
+
         if temp_value[-2:] == '.0':
             temp_value = temp_value[:-2]
             new_value = temp_value + 'px'
+   
     return    new_value
         
 
@@ -183,19 +208,14 @@ def rewrite_rules(list_of_rules):
         String: All the tuples made into a block of CSS
     """
     append_section = ''
-    #print 'rules: ' + str(list_of_rules)
     for rules in list_of_rules:
         rule = rules
-        #print rule
-        #print '>>>'
         if rule['hasResize'] == True:
-            #print 'passed' + /Navigation/resources/css/str(rule)
-            append_section += '\t' + rule['selector'].replace(', ', ',\n    ') + ' {\n'
+            append_section += '\t' + rule['selector'].replace(', ', ',\n') + '{\n'
             
             for declaration in rules['declaration_list']:
                 
                 if declaration['hasResize'] == True:
-                    #print declaration['valueList']
                     append_section += '\t\t' + declaration['name'] + ':'
                     for value in declaration['valueList']:     
                         append_section = append_section + ' ' + str(multiply_value(value))
@@ -205,7 +225,6 @@ def rewrite_rules(list_of_rules):
                     else:
                         append_section = append_section + ';\n'
                                 
-                                #print '$$$$$$$'
             append_section += '\t}\n\n'    
     return append_section
 
@@ -216,17 +235,19 @@ def write_new_file(directory, name, contents):
         name: String: name of file
         contents: String: what will be the contents of the file
     """
-    #print '===========\n name:'+ name
-    new_file_location = name[:-name[::-1].index('/')]
+    #print '===========\n name:'+ directory + '/' + name 
+    new_file_location = directory.replace('//', '/')
     new_file_name = name[-name[::-1].index('/'):]
-    #print 'new_file_name: '+ new_file_name         
-    new_file = open(new_file_location + '/scss/' + new_file_name , 'w')
+    #print 'new_file' + new_file_location + ' && ' + new_file_name         
+    new_file = open(new_file_location +  new_file_name , 'w')
     new_file.write(contents)
     new_file.close()
-    print 'Wrote new file at: ' + new_file_location + 'scss/' + new_file_name    
+    #print 'Wrote new file at: ' + new_file_location +  new_file_name    
+    return 'Done'
 
-
-#print 'Starting resize_css.py'
-scan_dir(working_dir)
-#print 'Finished resize_css.py'
-sys.exit(0)
+if __name__ == '__main__':
+    # If this is the main script being called
+    #print 'Starting resize_css.py'
+    scan_dir(working_dir)
+    #print 'Finished resize_css.py'
+    sys.exit(0)
