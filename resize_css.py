@@ -11,6 +11,7 @@ import sys
 import fileinput        # module to read files
 import subprocess
 import make_styles  #import another script I made
+from pprint import pprint #import pretty printing for easier debugging
 try:
     import tinycss    # module to parse css
     tiny_css_loaded = True
@@ -27,9 +28,10 @@ close_media_query = '}'
 target_dir = './scss'
 working_dir = '.'
 prohibited_dirs = ['.git', 'scss', 'sencha']
-prohibited_file_names = ['sencha-touch', 'jquery']
+prohibited_file_names = ['sencha-touch', 'jquery', 'reset']
+image_extentsions = ['.png', '.jpg', '.jpeg', '.gif']
 
-def is_prohibited(item_name, prohibition_list):
+def string_in_list(item_name, prohibition_list):
     """ This function is used to check whether the dir or file name is 
     prohibited to help us ignore things like the jQuery UI styles etc.
         Args:
@@ -56,22 +58,24 @@ def scan_dir(working_dir = '.'):
     parser = tinycss.make_parser('page3')
     for dirname, dirnames, filenames in os.walk(working_dir):
         has_new_scss = False
-        skip = is_prohibited(dirname, prohibited_dirs)
+        skip = string_in_list(dirname, prohibited_dirs)
             #print 'skip'
         if skip == True: continue
         else:
-            print 'dirname '+ dirname
+            #print 'dirname '+ dirname
             for full_file_name in filenames:
                 filepath = os.path.join(dirname, full_file_name)
                 file_name, file_extension = os.path.splitext(filepath)
                 if file_extension == '.css':
-                    skip =  is_prohibited(full_file_name, prohibited_file_names)
+                    skip =  string_in_list(full_file_name, prohibited_file_names)
                     if skip == True:
-                        print 'Skip ' + dirname + '/' + full_file_name 
+                        #print 'Skip ' + dirname + '/' + full_file_name 
                         continue
                     rules = parseit(filepath, parser)
                     contents = rewrite_rules(rules)
-                    file_contents = str(open(filepath, 'rb').read())
+                    file_open = open(filepath, 'rb') 
+                    file_contents = str(file_open.read())
+                    file_open.close()
                     current_dir = file_name
                     current_dir = current_dir[:-current_dir[::-1].index('/')]
                     scssDir = makedir(current_dir + '/scss')
@@ -81,11 +85,11 @@ def scan_dir(working_dir = '.'):
                         new_target_dir = current_dir + '/scss/720p/'
                         done = write_new_file(new_target_dir, file_name + '.scss', contents)
                     has_new_scss = True
-                    print '' + str(has_new_scss)
-                    print 'finished with css file'
-            print 'finshed loop ' + str(has_new_scss)
+                    #print '' + str(has_new_scss)
+                    #print 'finished with css file'
+            #print 'finshed loop ' + str(has_new_scss)
             if has_new_scss == True:
-                print 'Making new styles.scss'
+                #print 'Making new styles.scss'
                 make_styles.make_styles(dirname, media_query)
 
 def makedir(dirpath):
@@ -114,11 +118,12 @@ def parseit(filepath, parser):
         """
         # Make sure the rule does not have a keyword such as @import or @media
         if rule.at_keyword != None: continue
-        current_rule_dict = {}
-        current_rule_dict['selector'] = rule.selector.as_css()                
-        current_rule_dict['hasResize'] = False        
-        current_rule_dict['declaration_list'] = []
-        current_rule_dict['has_image'] = False
+        current_rule_dict = {
+            'selector': rule.selector.as_css(),
+            'has_resize_or_image': False,        
+            'declaration_list': [],
+            'has_image': False,
+            }
         for declaration in rule.declarations:
             """ Iterate over all the declarations in the rule and store their
             values to a list. Record all the declaration properties that
@@ -126,18 +131,22 @@ def parseit(filepath, parser):
             """
             declaration_dict = {
                 'name': declaration.name,
-                'valueList': [],
-                'hasResize': False,
-                'isImportant': declaration.priority
+                'value_list': [],
+                'has_resize_or_image': False,
+                'is_important': declaration.priority,
+                'has_image': False,
+                'has_resize': False
                 }
             for value in declaration.value:
-                # TODO: SEARCH FOR BACKGROUND-IMAGE AND STORE IT IN 
-                # THE DICT. SO THAT WE CAN REWRITE IT LATER
                 css_value = value.as_css()
-                if css_value != ' ': declaration_dict['valueList'].append(css_value)
+                if css_value != ' ': declaration_dict['value_list'].append(css_value)
                 if css_value.find('px') != -1:
-                    current_rule_dict['hasResize'] = True 
-                    declaration_dict['hasResize'] = True        
+                    current_rule_dict['has_resize_or_image'] = True 
+                    declaration_dict['has_resize'] = True
+                is_image = string_in_list(css_value, image_extentsions)
+                if is_image == True:
+                    current_rule_dict['has_resize_or_image'] = True
+                    declaration_dict['has_image'] = True
             current_rule_dict['declaration_list'].append(declaration_dict)
         list_of_rules.append(current_rule_dict)
         current_rule_dict = {}
@@ -198,6 +207,35 @@ def multiply_value(value):
    
     return    new_value
         
+def make_new_relative_path(path):
+    new_path = path
+    return new_path
+
+def process_image(declaration_list):
+    #pprint(declaration_list)
+    declaration_string = ''
+    for paramater in declaration_list:
+        #print paramater
+        if paramater.find('url') != -1 and True == string_in_list(paramater, image_extentsions):
+            print 'path is this: ' + paramater
+            path = paramater
+            modified_path = make_new_relative_path(paramater[4:-1])
+            720_p_exists = os.path.isfile(modified_path)
+            if 720_p_exists == True:
+                declaration_string = declaration_string + ' url(\'' + modified_path + ')'  
+            else:
+                declaration_string = declaration_string + ' ' + paramater
+                #log_missing_image(modified_path)
+        else:
+            declaration_string = declaration_string + ' ' + paramater
+
+        declaration_string = declaration_string + ''
+#    720_p_exists = os.path.isfile(modified_path)
+#    if 720_p_exists == True:
+#        return modified_path
+#    else:
+#       log_file_does_not_exist(modified_path)
+    return declaration_string
 
 
 def rewrite_rules(list_of_rules):
@@ -210,17 +248,23 @@ def rewrite_rules(list_of_rules):
     append_section = ''
     for rules in list_of_rules:
         rule = rules
-        if rule['hasResize'] == True:
+        if rule['has_resize_or_image'] == True:
             append_section += '\t' + rule['selector'].replace(', ', ',\n') + '{\n'
             
             for declaration in rules['declaration_list']:
-                
-                if declaration['hasResize'] == True:
+                #print('\ndeclaration: ')
+                #pprint(declaration)
+                if declaration['has_resize'] == True:
                     append_section += '\t\t' + declaration['name'] + ':'
-                    for value in declaration['valueList']:     
+                    for value in declaration['value_list']:     
                         append_section = append_section + ' ' + str(multiply_value(value))
-                    
-	            if declaration['isImportant'] == 'important':
+                
+                if declaration['has_image'] == True:
+                    #print '\n'
+                    #pprint(declaration)
+                    append_section = append_section + ' ' + process_image(declaration['value_list'])
+
+	            if declaration['is_important'] == 'important':
                         append_section = append_section + ' !important;\n'
                     else:
                         append_section = append_section + ';\n'

@@ -11,10 +11,11 @@ def make_styles(working_dir='.', media_query='@media....'):
     """ This is the main function for this script
     """
     print 'making styles'
+    # if we dont have a order json file dont do anything
+    if False == os.path.isfile(working_dir + '/order.json'): return
     final_block = ''
     json_css_order = open(working_dir + '/order.json')
     css_order = json.load(json_css_order)
-    pprint(css_order)
     json_css_order.close()
     final_block, import_block_720 = create_import_blocks(css_order, working_dir)
     if import_block_720:
