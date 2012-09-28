@@ -28,10 +28,11 @@ close_media_query = '}'
 target_dir = './scss'
 working_dir = '.'
 prohibited_dirs = ['.git', 'scss', 'sencha']
-prohibited_file_names = ['sencha-touch', 'jquery', 'reset']
+prohibited_file_names = ['sencha-touch', 'jquery', 'reset', 'main_styles']
 image_extentsions = ['.png', '.jpg', '.jpeg', '.gif']
+missing_images_list = []
 
-def string_in_list(item_name, prohibition_list):
+def string_in_list(item_name, prohibition_list, strict_compare):
     """ This function is used to check whether the dir or file name is 
     prohibited to help us ignore things like the jQuery UI styles etc.
         Args:
@@ -40,11 +41,17 @@ def string_in_list(item_name, prohibition_list):
         Returns:
             Boolean: True  if item is prohibited
     """
-    for name in prohibition_list:
-        if item_name.find(name) != -1:
-            return True
-        else:
-            return False
+    if strict_compare == True:
+        for name in prohibition_list:
+            if item_name == name:
+                return True
+
+    else:
+        for name in prohibition_list:
+            if item_name.find(name) != -1:
+                return True
+        
+    return False
     
 
 def scan_dir(working_dir = '.'):
@@ -58,7 +65,7 @@ def scan_dir(working_dir = '.'):
     parser = tinycss.make_parser('page3')
     for dirname, dirnames, filenames in os.walk(working_dir):
         has_new_scss = False
-        skip = string_in_list(dirname, prohibited_dirs)
+        skip = string_in_list(dirname, prohibited_dirs, False)
             #print 'skip'
         if skip == True: continue
         else:
@@ -67,12 +74,12 @@ def scan_dir(working_dir = '.'):
                 filepath = os.path.join(dirname, full_file_name)
                 file_name, file_extension = os.path.splitext(filepath)
                 if file_extension == '.css':
-                    skip =  string_in_list(full_file_name, prohibited_file_names)
+                    skip =  string_in_list(full_file_name, prohibited_file_names, False)
                     if skip == True:
                         #print 'Skip ' + dirname + '/' + full_file_name 
                         continue
                     rules = parseit(filepath, parser)
-                    contents = rewrite_rules(rules)
+                    contents = rewrite_rules(rules, dirname)
                     file_open = open(filepath, 'rb') 
                     file_contents = str(file_open.read())
                     file_open.close()
@@ -143,7 +150,7 @@ def parseit(filepath, parser):
                 if css_value.find('px') != -1:
                     current_rule_dict['has_resize_or_image'] = True 
                     declaration_dict['has_resize'] = True
-                is_image = string_in_list(css_value, image_extentsions)
+                is_image = string_in_list(css_value, image_extentsions, False)
                 if is_image == True:
                     current_rule_dict['has_resize_or_image'] = True
                     declaration_dict['has_image'] = True
@@ -205,40 +212,54 @@ def multiply_value(value):
             temp_value = temp_value[:-2]
             new_value = temp_value + 'px'
    
-    return    new_value
+    return new_value
         
-def make_new_relative_path(path):
-    new_path = path
-    return new_path
+def make_new_relative_path(starting_path, path):
+    new_path = path.replace('img/', 'img/720p/')
+    path_parts = new_path.split('..')
+    #pprint(path_parts)
+    dirs_up = len(path_parts)
+    start_path_segments = starting_path.split('/')
+    modified_path_start = '/'.join(start_path_segments[:-(dirs_up - 1)])
+    modified_path = starting_path[:starting_path.rfind('/')] + path_parts[-1]
+    #print 'Modified path: ' + modified_path
+    file_exists = os.path.isfile(modified_path)
+    #new_path = path
+    return (file_exists, new_path, modified_path)
 
-def process_image(declaration_list):
+def log_missing_image(missing_image_path):
+    global missing_images_list
+    already_found_missing = string_in_list(missing_image_path, missing_images_list, True)
+    if already_found_missing == False:
+        missing_images_list.append(missing_image_path)
+    print missing_image_path    
+
+
+def process_image(declaration_list, css_file_dir):
     #pprint(declaration_list)
     declaration_string = ''
     for paramater in declaration_list:
         #print paramater
-        if paramater.find('url') != -1 and True == string_in_list(paramater, image_extentsions):
-            print 'path is this: ' + paramater
+        if paramater.find('url') != -1 and True == string_in_list(paramater, image_extentsions, False):
+            #print 'path is this: ' + paramater
             path = paramater
-            modified_path = make_new_relative_path(paramater[4:-1])
-            720_p_exists = os.path.isfile(modified_path)
-            if 720_p_exists == True:
+            img_720p_exists, modified_path, real_path = make_new_relative_path(css_file_dir, paramater[4:-1])
+            if img_720p_exists == True:
+                #print '::: File exists: ' + modified_path
                 declaration_string = declaration_string + ' url(\'' + modified_path + ')'  
             else:
                 declaration_string = declaration_string + ' ' + paramater
-                #log_missing_image(modified_path)
+                #print '::: File does not exits: ' + modified_path
+                log_missing_image(real_path)
+                #print '\n'
         else:
             declaration_string = declaration_string + ' ' + paramater
 
         declaration_string = declaration_string + ''
-#    720_p_exists = os.path.isfile(modified_path)
-#    if 720_p_exists == True:
-#        return modified_path
-#    else:
-#       log_file_does_not_exist(modified_path)
     return declaration_string
 
 
-def rewrite_rules(list_of_rules):
+def rewrite_rules(list_of_rules, file_dir):
     """ Writes a big string of css rules based on the list of rule tuples supplied
     Args:
         list_of_rules: List: A list of tuples with information about css rules
@@ -255,16 +276,22 @@ def rewrite_rules(list_of_rules):
                 #print('\ndeclaration: ')
                 #pprint(declaration)
                 if declaration['has_resize'] == True:
-                    append_section += '\t\t' + declaration['name'] + ':'
+                    append_section = append_section + '\t\t' + declaration['name'] + ':'
                     for value in declaration['value_list']:     
-                        append_section = append_section + ' ' + str(multiply_value(value))
-                
+                        append_section = append_section + ' ' + multiply_value(value) 
+
+                    if declaration['is_important'] == 'important':
+                        append_section = append_section + ' !important;\n'
+                    else:
+                        append_section = append_section + ';\n'
+
                 if declaration['has_image'] == True:
                     #print '\n'
                     #pprint(declaration)
-                    append_section = append_section + ' ' + process_image(declaration['value_list'])
-
-	            if declaration['is_important'] == 'important':
+                    append_section = append_section + '\t\t' + declaration['name'] + ':'
+                    append_section = append_section + ' ' + process_image(declaration['value_list'], file_dir)
+                    
+                    if declaration['is_important'] == 'important':
                         append_section = append_section + ' !important;\n'
                     else:
                         append_section = append_section + ';\n'
@@ -289,9 +316,16 @@ def write_new_file(directory, name, contents):
     #print 'Wrote new file at: ' + new_file_location +  new_file_name    
     return 'Done'
 
+def write_logs():
+    if any(missing_images_list) == True:
+        missing_images_log = open('missing_images.txt', 'w')
+        missing_images_log.write('\n'.join(missing_images_list) + '\n')
+        missing_images_log.close()
+
 if __name__ == '__main__':
     # If this is the main script being called
     #print 'Starting resize_css.py'
     scan_dir(working_dir)
+    write_logs()
     #print 'Finished resize_css.py'
     sys.exit(0)
